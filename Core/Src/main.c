@@ -117,7 +117,7 @@ void ParseAngleCommand(void) {
 
       // 验证角度范围
       if (value >= 0 && value <= MAX_ANGLE_VALUE) {
-        pitchAngle = value + 43; // 更新全局角度值
+        pitchAngle = value; // 更新全局角度值
         // 此处可添加舵机控制函数调用
         Set_Servo_Angle(pitchAngle);
         char doneMsg[] = "PITCH_DONE\r\n";
@@ -135,7 +135,7 @@ void ParseAngleCommand(void) {
 void Set_Servo_Angle(float angle) {
   // 限制角度范围
   if (angle < 0) angle = 0;
-  if (angle > 220) angle = 220;
+  if (angle > 270) angle = 270;
 
   // 计算脉宽时间
   float pulse_width = MIN_PULSE + (angle / 270.0) * (MAX_PULSE - MIN_PULSE);
