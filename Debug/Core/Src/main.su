@@ -1,6 +1,9 @@
-../Core/Src/main.c:73:5:main	8	static
-../Core/Src/main.c:121:6:SystemClock_Config	72	static
-../Core/Src/main.c:161:13:MX_TIM2_Init	48	static
-../Core/Src/main.c:210:13:MX_GPIO_Init	24	static
-../Core/Src/main.c:229:6:Set_Servo_Angle	40	static
-../Core/Src/main.c:248:6:Error_Handler	4	static,ignoring_inline_asm
+../Core/Src/main.c:78:6:HAL_UART_RxCpltCallback	16	static
+../Core/Src/main.c:101:6:ParseAngleCommand	168	static
+../Core/Src/main.c:135:6:Set_Servo_Angle	40	static
+../Core/Src/main.c:154:5:main	8	static
+../Core/Src/main.c:214:6:SystemClock_Config	72	static
+../Core/Src/main.c:254:13:MX_TIM2_Init	48	static
+../Core/Src/main.c:303:13:MX_USART1_UART_Init	8	static
+../Core/Src/main.c:336:13:MX_GPIO_Init	24	static
+../Core/Src/main.c:360:6:Error_Handler	4	static,ignoring_inline_asm

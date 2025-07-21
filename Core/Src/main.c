@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "string.h"
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,11 +37,15 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+#define MAX_ANGLE_VALUE 270.0  // 最大允许角度值
+#define RX_BUFFER_SIZE 128     // 串口接收缓冲区大小
 
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim2;
+
+UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 
@@ -49,20 +54,96 @@ const uint32_t TIM_CLK = 72000000;  // 72MHz系统时钟
 const float MIN_PULSE = 0.5;   // 0.5ms (0°位置)
 const float MAX_PULSE = 2.5;   // 2.5ms (180°位置)
 
+// 全局变量定义
+char rxBuffer[RX_BUFFER_SIZE]; // 接收缓冲区
+uint8_t rxIndex = 0;           // 缓冲区索引
+volatile uint8_t rxComplete = 0; // 接收完成标志
+float pitchAngle = 0.0;        // 存储解析后的俯仰角度
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 void Set_Servo_Angle(float angle);
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+// 串口接收中断回调函数
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+  if (huart->Instance == USART1) {
+    // 检查是否收到完整指令（以换行符结束）
+    if (rxBuffer[rxIndex] == 'x') {
+      rxBuffer[rxIndex] = '\0'; // 替换结束符
+      rxComplete = 1;           // 设置接收完成标志
+      rxIndex = 0;              // 重置索引
+    }
+    else {
+      rxIndex++;  // 移动到下一个缓冲位置
+
+      // 防止缓冲区溢出
+      if (rxIndex >= RX_BUFFER_SIZE - 1) {
+        rxIndex = 0; // 溢出时重置缓冲区
+      }
+    }
+
+    // 重新启用接收中断
+    HAL_UART_Receive_IT(&huart1, (uint8_t*)&rxBuffer[rxIndex], 1);
+  }
+}
+
+// 解析角度指令函数
+void ParseAngleCommand(void) {
+  // 临时变量用于解析
+  char *token;
+  char tempBuffer[RX_BUFFER_SIZE];
+
+  // 复制接收缓冲到临时变量
+  strncpy(tempBuffer, rxBuffer, RX_BUFFER_SIZE);
+
+  // 查找"ANGLE:"指令前缀
+  token = strtok(tempBuffer, ":");
+  if (token != NULL && strcmp(token, "ANGLE") == 0) {
+    // 提取角度值部分
+    token = strtok(NULL, ":");
+    if (token != NULL) {
+      // 转换为浮点数
+      float value = atof(token);
+
+      // 验证角度范围
+      if (value >= 0 && value <= MAX_ANGLE_VALUE) {
+        pitchAngle = value + 43; // 更新全局角度值
+        // 此处可添加舵机控制函数调用
+        Set_Servo_Angle(pitchAngle);
+        char doneMsg[] = "PITCH_DONE\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)doneMsg, strlen(doneMsg), HAL_MAX_DELAY);
+      }
+    }
+  }
+
+  // 清空接收完成标志
+  rxComplete = 0;
+}
+
+
+// 设置舵机角度 (0°-180°)
+void Set_Servo_Angle(float angle) {
+  // 限制角度范围
+  if (angle < 0) angle = 0;
+  if (angle > 220) angle = 220;
+
+  // 计算脉宽时间
+  float pulse_width = MIN_PULSE + (angle / 270.0) * (MAX_PULSE - MIN_PULSE);
+
+  // 计算对应的寄存器值 (ARR=自动重装载值)
+  uint32_t pulse = (pulse_width / 1000.0) * TIM_CLK / htim2.Init.Prescaler;
+  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pulse);
+}
 
 /* USER CODE END 0 */
 
@@ -96,9 +177,12 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_TIM2_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   // 启动PWM通道
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  // 启用串口接收中断
+  HAL_UART_Receive_IT(&huart1, (uint8_t*)&rxBuffer[rxIndex], 1);
   // 示例：旋转舵机到45°位置
   Set_Servo_Angle(90);
   /* USER CODE END 2 */
@@ -107,6 +191,15 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	// 检查串口接收是否完成
+	if (rxComplete) {
+	  ParseAngleCommand(); // 解析角度指令
+	}
+
+	// 主循环延时（可根据需求调整）
+	HAL_Delay(10);
+	// 主循环延时（可根据需求调整）
+	//HAL_Delay(1);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -203,6 +296,39 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -224,20 +350,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-// 设置舵机角度 (0°-180°)
-void Set_Servo_Angle(float angle) {
-  // 限制角度范围
-  if (angle < 0) angle = 0;
-  if (angle > 180) angle = 180;
-
-  // 计算脉宽时间
-  float pulse_width = MIN_PULSE + (angle / 180.0) * (MAX_PULSE - MIN_PULSE);
-
-  // 计算对应的寄存器值 (ARR=自动重装载值)
-  uint32_t pulse = (pulse_width / 1000.0) * TIM_CLK / htim2.Init.Prescaler;
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pulse);
-}
 
 /* USER CODE END 4 */
 
